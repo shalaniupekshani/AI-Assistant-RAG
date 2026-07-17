@@ -4,55 +4,49 @@ import ollama
 
 def ask_question(question, index, metadata, embedding_model, reranker, TOP_K=10, FINAL_K=3):
 
-    # =====================
-    # QUERY EMBEDDING
-    # =====================
+    #Convert user question into vector
     q_embedding = embedding_model.encode(
         [question],
         normalize_embeddings=True
     ).astype("float32")
 
+    #Search FAISS
     distances, indices = index.search(q_embedding, TOP_K)
 
     retrieved = []
 
+    # for meta data
     for idx in indices[0]:
         if idx < 0:
             continue
         retrieved.append(metadata[idx])
 
-    # =====================
-    # RERANKING
-    # =====================
+    #create pairs for the CrossEncoder (question, document)
     pairs = [(question, item["text"]) for item in retrieved]
     scores = reranker.predict(pairs)
 
     ranked = sorted(
-        zip(retrieved, scores),
-        key=lambda x: x[1],
+        zip(retrieved, scores), # Combine retrieved and score into (chunk1,0.98)(chunk2,0.61)
+        key=lambda x: x[1], # sort according to score
         reverse=True
     )
 
     top_chunks = ranked[:FINAL_K]
 
-    # =====================
-    # BUILD CONTEXT
-    # =====================
+   #Context build
     context_parts = []
     sources_used = set()
 
     for item, score in top_chunks:
-        sources_used.add(item["source"])
+        sources_used.add(item["source"]) #store file name
 
         context_parts.append(
-            f"[Source: {item['source']}]\n{item['text']}"
+            f"[Source: {item['source']}]\n{item['text']}" #Append formatted text
         )
 
     context = "\n\n".join(context_parts)
 
-    # =====================
-    # PROMPT
-    # =====================
+    # Prompt
     prompt = f"""
 You are a strict document assistant.
 
@@ -70,13 +64,12 @@ QUESTION:
 ANSWER:
 """
 
-    # =====================
-    # LLM CALL
-    # =====================
+    
+    # LLM call
     response = ollama.chat(
         model="llama3",
         messages=[{"role": "user", "content": prompt}]
-    )
+    ) 
 
     return {
         "answer": response["message"]["content"],
