@@ -1,6 +1,7 @@
 import numpy as np
 import faiss
-import ollama
+from groq import Groq
+import os
 
 def ask_question(question, index, metadata, embedding_model, reranker, TOP_K=10, FINAL_K=3):
 
@@ -66,13 +67,32 @@ ANSWER:
 
     
     # LLM call
-    response = ollama.chat(
-        model="llama3",
-        messages=[{"role": "user", "content": prompt}]
-    ) 
+    client = Groq(
+        api_key=os.getenv("GROQ_API_KEY")
+    )
+
+    if not client.api_key:
+        raise ValueError("GROQ_API_KEY is missing")
+
+
+    response = client.chat.completions.create(
+
+        model="llama-3.1-8b-instant",
+
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+
+    )
+
+
+    answer = response.choices[0].message.content
 
     return {
-        "answer": response["message"]["content"],
+        "answer": answer,
         "sources": list(sources_used),
         "chunks": context_parts
     }
